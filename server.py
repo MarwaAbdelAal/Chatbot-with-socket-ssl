@@ -1,8 +1,11 @@
 import socket
 import select
+import ssl
+import datetime
 
 HEADER_LENGTH = 10
 
+# IP address and the port number of the server
 IP = "127.0.0.1"
 PORT = 5000
 
@@ -32,12 +35,12 @@ clients = {}
 print(f'Listening for connections on {IP}:{PORT}...')
 
 # Handles message receiving
-def receive_message(client_socket):
+def receive_message(secureClientSocket):
 
     try:
 
         # Receive our "header" containing message length, it's size is defined and constant
-        message_header = client_socket.recv(HEADER_LENGTH)
+        message_header = secureClientSocket.recv(HEADER_LENGTH)
 
         # If we received no data, client gracefully closed a connection, for example using socket.close() or socket.shutdown(socket.SHUT_RDWR)
         if not len(message_header):
@@ -47,7 +50,7 @@ def receive_message(client_socket):
         message_length = int(message_header.decode('utf-8').strip())
 
         # Return an object of message header and message data
-        return {'header': message_header, 'data': client_socket.recv(message_length)}
+        return {'header': message_header, 'data': secureClientSocket.recv(message_length)}
 
     except:
 
@@ -56,6 +59,7 @@ def receive_message(client_socket):
         # socket.close() also invokes socket.shutdown(socket.SHUT_RDWR) what sends information about closing the socket (shutdown read/write)
         # and that's also a cause when we receive an empty message
         return False
+
 
 while True:
 
@@ -68,8 +72,8 @@ while True:
     #   - writing - sockets ready for data to be send thru them
     #   - errors  - sockets with some exceptions
     # This is a blocking call, code execution will "wait" here and "get" notified in case any action should be taken
-    read_sockets, _, exception_sockets = select.select(sockets_list, [], sockets_list)
-
+    read_sockets, _, exception_sockets = select.select(
+        sockets_list, [], sockets_list)
 
     # Iterate over notified sockets
     for notified_socket in read_sockets:
@@ -82,20 +86,37 @@ while True:
             # The other returned object is ip/port set
             client_socket, client_address = server_socket.accept()
 
+            # Make the socket connection to the clients secure through SSLSocket
+            secureClientSocket = ssl.wrap_socket(client_socket,
+                                                 server_side=True,
+                                                 ca_certs="snakeoil.pem",
+                                                 certfile="snakeoil.pem",
+                                                 keyfile="snakeoil.key",
+                                                #  cert_reqs=ssl.CERT_REQUIRED,
+                                                 ssl_version=ssl.PROTOCOL_TLSv1_2)
+
+            # Send current server time to the client
+            serverTimeNow = "%s" % datetime.datetime.now();
+            secureClientSocket.send(serverTimeNow.encode('utf-8'));
+            # msg = "Hello from server"
+            # secureClientSocket.send(msg.encode('utf-8'));
+            print("Securely sent %s to %s" % (serverTimeNow, client_address));
+
             # Client should send his name right away, receive it
-            user = receive_message(client_socket)
+            user = receive_message(secureClientSocket)
 
             # If False - client disconnected before he sent his name
             if user is False:
                 continue
 
             # Add accepted socket to select.select() list
-            sockets_list.append(client_socket)
+            sockets_list.append(secureClientSocket)
 
             # Also save username and username header
-            clients[client_socket] = user
+            clients[secureClientSocket] = user
 
-            print('Accepted new connection from {}:{}, username: {}'.format(*client_address, user['data'].decode('utf-8')))
+            print('Accepted new connection from {}:{}, username: {}'.format(
+                *client_address, user['data'].decode('utf-8')))
 
         # Else existing socket is sending a message
         else:
@@ -105,7 +126,8 @@ while True:
 
             # If False, client disconnected, cleanup
             if message is False:
-                print('Closed connection from: {}'.format(clients[notified_socket]['data'].decode('utf-8')))
+                print('Closed connection from: {}'.format(
+                    clients[notified_socket]['data'].decode('utf-8')))
 
                 # Remove from list for socket.socket()
                 sockets_list.remove(notified_socket)
@@ -118,21 +140,29 @@ while True:
             # Get user by notified socket, so we will know who sent the message
             user = clients[notified_socket]
 
-            print(f'Received message from {user["data"].decode("utf-8")}: {message["data"].decode("utf-8")}')
+            print(
+                f'Received message from {user["data"].decode("utf-8")}: {message["data"].decode("utf-8")}')
+
+            # Send current server time to the client
+            # serverTimeNow = "%s" % datetime.datetime.now();
+            # msg = "this is a dynamic message"
+            # secureClientSocket.send(msg.encode('utf-8'));
+            # print("Securely sent %s to %s" % (serverTimeNow, client_address));
 
             # Iterate over connected clients and broadcast message
-            for client_socket in clients:
+            for secureClientSocket in clients:
 
                 # But don't sent it to sender
-                if client_socket != notified_socket:
+                if secureClientSocket != notified_socket:
 
                     # Send user and message (both with their headers)
                     # We are reusing here message header sent by sender, and saved username header send by user when he connected
-                    client_socket.send(user['header'] + user['data'] + message['header'] + message['data'])
+                    secureClientSocket.send(
+                        user['header'] + user['data'] + message['header'] + message['data'])
 
     # It's not really necessary to have this, but will handle some socket exceptions just in case
     for notified_socket in exception_sockets:
-
+    
         # Remove from list for socket.socket()
         sockets_list.remove(notified_socket)
 
