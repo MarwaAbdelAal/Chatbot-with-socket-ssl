@@ -2,10 +2,8 @@ import socket
 import select
 import ssl
 import datetime
+from chatbot import chat
 
-HEADER_LENGTH = 10
-
-# IP address and the port number of the server
 IP = "127.0.0.1"
 PORT = 5000
 
@@ -39,18 +37,15 @@ def receive_message(secureClientSocket):
 
     try:
 
-        # Receive our "header" containing message length, it's size is defined and constant
-        message_header = secureClientSocket.recv(HEADER_LENGTH)
+        # Receive our message
+        message = secureClientSocket.recv()
 
         # If we received no data, client gracefully closed a connection, for example using socket.close() or socket.shutdown(socket.SHUT_RDWR)
-        if not len(message_header):
+        if not len(message):
             return False
 
-        # Convert header to int value
-        message_length = int(message_header.decode('utf-8').strip())
-
         # Return an object of message header and message data
-        return {'header': message_header, 'data': secureClientSocket.recv(message_length)}
+        return {'header': 'message_header', 'data': message}
 
     except:
 
@@ -89,18 +84,10 @@ while True:
             # Make the socket connection to the clients secure through SSLSocket
             secureClientSocket = ssl.wrap_socket(client_socket,
                                                  server_side=True,
-                                                 ca_certs="snakeoil.pem",
-                                                 certfile="snakeoil.pem",
-                                                 keyfile="snakeoil.key",
-                                                #  cert_reqs=ssl.CERT_REQUIRED,
+                                                 ca_certs="./security/snakeoil.pem",
+                                                 certfile="./security/snakeoil.pem",
+                                                 keyfile="./security/snakeoil.key",
                                                  ssl_version=ssl.PROTOCOL_TLSv1_2)
-
-            # Send current server time to the client
-            serverTimeNow = "%s" % datetime.datetime.now();
-            secureClientSocket.send(serverTimeNow.encode('utf-8'));
-            # msg = "Hello from server"
-            # secureClientSocket.send(msg.encode('utf-8'));
-            print("Securely sent %s to %s" % (serverTimeNow, client_address));
 
             # Client should send his name right away, receive it
             user = receive_message(secureClientSocket)
@@ -112,7 +99,7 @@ while True:
             # Add accepted socket to select.select() list
             sockets_list.append(secureClientSocket)
 
-            # Also save username and username header
+            # Also save username
             clients[secureClientSocket] = user
 
             print('Accepted new connection from {}:{}, username: {}'.format(
@@ -143,22 +130,12 @@ while True:
             print(
                 f'Received message from {user["data"].decode("utf-8")}: {message["data"].decode("utf-8")}')
 
-            # Send current server time to the client
-            # serverTimeNow = "%s" % datetime.datetime.now();
-            # msg = "this is a dynamic message"
-            # secureClientSocket.send(msg.encode('utf-8'));
-            # print("Securely sent %s to %s" % (serverTimeNow, client_address));
 
-            # Iterate over connected clients and broadcast message
-            for secureClientSocket in clients:
+            response = chat(message["data"].decode("utf-8"))
 
-                # But don't sent it to sender
-                if secureClientSocket != notified_socket:
-
-                    # Send user and message (both with their headers)
-                    # We are reusing here message header sent by sender, and saved username header send by user when he connected
-                    secureClientSocket.send(
-                        user['header'] + user['data'] + message['header'] + message['data'])
+            # Send current message to the client
+            notified_socket.send(response.encode('utf-8'));
+            print("Securely sent '%s' to user: '%s'" % (response, user["data"].decode("utf-8")));
 
     # It's not really necessary to have this, but will handle some socket exceptions just in case
     for notified_socket in exception_sockets:
