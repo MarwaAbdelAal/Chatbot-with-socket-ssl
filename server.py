@@ -1,7 +1,6 @@
 import socket
 import select
 import ssl
-import datetime
 from chatbot import chat
 
 IP = "127.0.0.1"

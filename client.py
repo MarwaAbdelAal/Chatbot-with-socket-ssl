@@ -1,6 +1,5 @@
 import socket
 import sys
-import errno
 import ssl
 import time
 
@@ -73,7 +72,7 @@ while True:
         while True:
 
             msg = secureClientSocket.recv()
-            print(f"server >> {msg.decode('utf-8')}")
+            print(f"Chatbot >> {msg.decode('utf-8')}")
 
             # If we received no data, server gracefully closed a connection, for example using socket.close() or socket.shutdown(socket.SHUT_RDWR)
             if not len(msg):
